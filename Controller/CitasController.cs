@@ -7,6 +7,7 @@ using TesisAdvocorp.Data;
 using TesisAdvocorp.Modelos;
 using TesisAdvocorp.Modelos.Dtos;
 using TesisAdvocorp.Repositorios.IRepositorios;
+using XAct;
 
 namespace TesisAdvocorp.Controller
 {
@@ -45,6 +46,7 @@ namespace TesisAdvocorp.Controller
         public async Task<ActionResult<IEnumerable<CitaDTO>>> GetCitasByAbogado(int abogadoId)
         {
             var citas = await _citaRepo.GetByAbogadoIdAsync(abogadoId);
+
             var citasDTO = citas.Select(c => new CitaDTO
             {
                 CitaId = c.CitaId,
@@ -53,7 +55,8 @@ namespace TesisAdvocorp.Controller
                 NombreCliente = c.Cliente != null ? $"{c.Cliente.Nombre} {c.Cliente.Apellido}" : "No disponible",
                 NombreAbogado = c.Abogado != null ? $"{c.Abogado.Nombre} {c.Abogado.Apellido}" : "No disponible",
                 Especialidad = c.Abogado?.Especialidad?.Descripcion ?? "No especificada",
-                Estado = c.Estado
+                Estado = c.Estado,
+                Duracion = c.Duracion
             }).ToList();
 
             return Ok(citasDTO);
@@ -61,72 +64,62 @@ namespace TesisAdvocorp.Controller
 
         [HttpPost]
         [HttpPost]
-        public async Task<ActionResult<CitaDTO>> CrearCita(CitaDTO citaDTO)
+    public async Task<ActionResult<CitaDTO>> CrearCita(CitaDTO citaDTO)
+    {
+      var usuario = await _usuarioRepo.GetByIdAsync(citaDTO.ClienteId);
+      if (usuario == null || usuario.RolId != 2) // Verifica si el usuario es un cliente válido
+      {
+        return BadRequest("Cliente no válido");
+      }
+
+      // Comprueba si hay citas pendientes con el mismo abogado que no estén rechazadas
+      var citasPrevias = await _citaRepo.GetByClienteIdAsync(citaDTO.ClienteId);
+      var citaPendiente = citasPrevias.FirstOrDefault(c => c.AbogadoId == citaDTO.AbogadoId && c.Estado != "Rechazada");
+      if (citaPendiente != null)
+      {
+        return BadRequest($"Ya existe una cita pendiente con el abogado. Espera que se resuelva antes de crear una nueva.");
+      }
+
+      // Verifica si la nueva cita se solapa con citas existentes del mismo abogado
+      var todasCitas = await _citaRepo.GetAllAsync();
+
+      foreach (var itemCita in todasCitas)
+      {
+        if (itemCita.AbogadoId == citaDTO.AbogadoId && itemCita.Estado != "Rechazada")
         {
-            var usuario = await _usuarioRepo.GetByIdAsync(citaDTO.ClienteId);
-            if (usuario == null || usuario.RolId != 2) // Verifica si el usuario es un cliente válido
-            {
-                return BadRequest("Cliente no válido");
-            }
+          var fechaInicioExistente = itemCita.FechaHora;
+          var fechaFinExistente = fechaInicioExistente.AddMinutes(itemCita.Duracion); // Asumiendo que la duración está en minutos
 
-            // Comprueba si hay citas pendientes con el mismo abogado que no estén rechazadas
-            var citasPrevias = await _citaRepo.GetByClienteIdAsync(citaDTO.ClienteId);
-            var citaPendiente = citasPrevias.FirstOrDefault(c => c.AbogadoId == citaDTO.AbogadoId && c.Estado != "Rechazada");
-            if (citaPendiente != null)
-            {
-                return BadRequest($"Ya existe una cita pendiente con el abogado. Espera que se resuelva antes de crear una nueva.");
-            }
+          var nuevaFechaInicio = citaDTO.FechaHora;
+          var nuevaFechaFin = nuevaFechaInicio.AddMinutes(citaDTO.Duracion);
 
-            var cita = _mapper.Map<Cita>(citaDTO);
-            cita.Estado = "Pendiente";
-
-            var nuevaCita = await _citaRepo.AddAsync(cita);
-            var nuevaCitaDTO = _mapper.Map<CitaDTO>(nuevaCita);
-
-            var abogado = await _usuarioRepo.GetByIdAsync(cita.AbogadoId);
-            if (abogado != null)
-            {
-                await EnviarCorreoAsync(abogado.Email, "Nueva Cita Asignada",
-                    $"Se te ha asignado una nueva cita con detalles: {cita.Descripcion} para el {cita.FechaHora}");
-            }
-
-            return CreatedAtAction(nameof(GetCitas), new { id = nuevaCitaDTO.CitaId }, nuevaCitaDTO);
+          // Verificar si la nueva cita se solapa con una existente
+          if (nuevaFechaInicio < fechaFinExistente && nuevaFechaFin > fechaInicioExistente)
+          {
+            return BadRequest("La nueva cita se solapa con otra existente en el mismo horario.");
+          }
         }
+      }
 
-        [HttpPut("{citaId}")]
-        public async Task<IActionResult> ActualizarCita(int citaId, [FromBody] CitaDTO citaDTO)
-        {
-            var cita = await _citaRepo.GetByIdAsync(citaId);
-            if (cita == null)
-            {
-                return NotFound(new { error = "Cita no encontrada" });
-            }
+      // Mapear y guardar la nueva cita
+      var cita = _mapper.Map<Cita>(citaDTO);
+      cita.Estado = "Pendiente";
 
-            // Si la cita es aceptada, verifica conflictos de horarios
-            if (citaDTO.Estado == "Aceptado")
-            {
-                var citasAceptadas = await _citaRepo.GetCitasAceptadasPorAbogado(cita.AbogadoId);
-                if (citasAceptadas.Any(c => c.FechaHora == cita.FechaHora && c.CitaId != citaId))
-                {
-                    return BadRequest("Ya tienes una cita aceptada en este horario. Por favor, actualiza la fecha.");
-                }
-            }
+      var nuevaCita = await _citaRepo.AddAsync(cita);
+      var nuevaCitaDTO = _mapper.Map<CitaDTO>(nuevaCita);
 
-            cita.Estado = citaDTO.Estado;
-            await _citaRepo.UpdateAsync(cita);
+      var abogado = await _usuarioRepo.GetByIdAsync(cita.AbogadoId);
+      if (abogado != null)
+      {
+        await EnviarCorreoAsync(abogado.Email, "Nueva Cita Asignada",
+            $"Se te ha asignado una nueva cita con detalles: {cita.Descripcion} para el {cita.FechaHora}");
+      }
 
-            var cliente = await _usuarioRepo.GetByIdAsync(cita.ClienteId);
-            if (cliente != null)
-            {
-                string mensaje = cita.Estado == "Aceptado" ? "aceptada" : "rechazada";
-                await EnviarCorreoAsync(cliente.Email, "Estado de la Cita Actualizado",
-                    $"Tu cita ha sido {mensaje}");
-            }
+      return CreatedAtAction(nameof(GetCitas), new { id = nuevaCitaDTO.CitaId }, nuevaCitaDTO);
+    }
 
-            return Ok(new { success = true });
-        }
 
-        [HttpGet("cita/{citaId}/detalles")]
+    [HttpGet("cita/{citaId}/detalles")]
         public async Task<ActionResult<CitaDTO>> GetCitaDetails(int citaId)
         {
             var citaDto = await _citaRepo.GetCitaDetailsAsync(citaId);

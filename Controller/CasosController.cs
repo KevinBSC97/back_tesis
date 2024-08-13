@@ -4,6 +4,8 @@ using TesisAdvocorp.Modelos;
 using TesisAdvocorp.Modelos.Dtos;
 using TesisAdvocorp.Repositorios.IRepositorios;
 
+using XAct;
+
 namespace TesisAdvocorp.Controller
 {
     [Route("api/casos")]
@@ -37,26 +39,33 @@ namespace TesisAdvocorp.Controller
             return Ok(casosDTO);
         }
 
-        [HttpPost]
-        public async Task<IActionResult> CrearCaso(CasoDTO casoDTO)
+    [HttpPost]
+    public async Task<IActionResult> CrearCaso(CasoDTO casoDTO)
+    {
+        if (!ModelState.IsValid)
         {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState);
-            }
-
-            var caso = _mapper.Map<Caso>(casoDTO);
-            caso = await _casoRepo.AddAsync(caso);
-            if (caso == null)
-            {
-                return BadRequest("Error al guardar el caso");
-            }
-
-            // Asegúrate de que la acción a la que rediriges después de crear el caso tenga la ruta correcta.
-            return CreatedAtAction(nameof(GetCasos), new { id = caso.CasoId }, _mapper.Map<CasoDTO>(caso));
+          return BadRequest(ModelState);
         }
 
-        [HttpGet("cita/{citaId}")]
+        var caso = _mapper.Map<Caso>(casoDTO);
+
+        string imagenesConcatenadas = string.Join("|", casoDTO.Imagenes);
+        caso.Imagenes = imagenesConcatenadas;
+
+        caso = await _casoRepo.AddAsync(caso);
+        if (caso == null)
+        {
+          return BadRequest("Error al guardar el caso");
+        }
+
+        var casoResponse = _mapper.Map<CasoDTO>(caso);
+        casoResponse.Imagenes = caso.Imagenes.Split('|').ToList();
+
+        return CreatedAtAction(nameof(GetCasos), new { id = caso.CasoId }, casoResponse);
+    }
+
+
+    [HttpGet("cita/{citaId}")]
         public async Task<IActionResult> GetCasosByCitaId(int citaId)
         {
             var casos = await _casoRepo.GetCasosByCitaIdAsync(citaId);

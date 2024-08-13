@@ -4,6 +4,8 @@ using TesisAdvocorp.Modelos;
 using TesisAdvocorp.Modelos.Dtos;
 using TesisAdvocorp.Repositorios.IRepositorios;
 
+using XAct;
+
 namespace TesisAdvocorp.Repositorios
 {
     public class CasoRepositorio : ICasoRepositorio
@@ -32,31 +34,34 @@ namespace TesisAdvocorp.Repositorios
             }
         }
 
-        public async Task<IEnumerable<CasoDTO>> GetAllAsync()
-        {
-            var casos = await _db.Casos
-                .Include(c => c.Cliente)
-                .Include(c => c.Abogado)
-                .Select(c => new CasoDTO
-                {
-                    CasoId = c.CasoId,
-                    Descripcion = c.Descripcion,
-                    Asunto = c.Asunto,
-                    Estado = c.Estado,
-                    NombreAbogado = c.Abogado.Nombre + " " + c.Abogado.Apellido,
-                    NombreCliente = c.Cliente.Nombre + " " + c.Cliente.Apellido,
-                    ClienteId = c.ClienteId,
-                    AbogadoId = c.AbogadoId,
-                    CitaId = c.CitaId,
-                    EspecialidadDescripcion = c.Descripcion,
-                    FechaCita = c.Cita.FechaHora
-                })
-                .ToListAsync();
+    public async Task<IEnumerable<CasoDTO>> GetAllAsync()
+    {
+      var casos = await _db.Casos
+          .Include(c => c.Cliente)
+          .Include(c => c.Abogado)
+          .ToListAsync();
 
-            return casos;
-        }
+      var casoDTOs = casos.Select(c => new CasoDTO
+      {
+        CasoId = c.CasoId,
+        Descripcion = c.Descripcion,
+        Asunto = c.Asunto,
+        Estado = c.Estado,
+        NombreAbogado = c.Abogado != null ? c.Abogado.Nombre + " " + c.Abogado.Apellido : "N/A",
+        NombreCliente = c.Cliente != null ? c.Cliente.Nombre + " " + c.Cliente.Apellido : "N/A",
+        ClienteId = c.ClienteId,
+        AbogadoId = c.AbogadoId,
+        CitaId = c.CitaId,
+        EspecialidadDescripcion = c.Descripcion,
+        Imagenes = c.Imagenes != null ? c.Imagenes.Split('|').ToList() : new List<string>()
+      }).ToList();
 
-        public async Task<IEnumerable<Caso>> GetByAbogadoIdAsync(int abogadoId)
+
+      return casoDTOs;
+    }
+
+
+    public async Task<IEnumerable<Caso>> GetByAbogadoIdAsync(int abogadoId)
         {
             return await _db.Casos
                 .Where(c => c.AbogadoId == abogadoId && c.Cita.Estado == "Aceptada")

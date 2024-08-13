@@ -11,5 +11,6 @@
         public string NombreAbogado { get; set; }
         public string Especialidad { get; set; }
         public string Estado { get; set; }
-    }
+        public int Duracion { get; set; }
+  }
 }

@@ -19,5 +19,6 @@ namespace TesisAdvocorp.Modelos
         public Usuario Abogado { get; set; }
 
         public string Estado { get; set; }
-    }
+        public int Duracion { get; set; }
+  }
 }

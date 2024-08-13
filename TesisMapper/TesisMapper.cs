@@ -11,7 +11,10 @@ namespace TesisAdvocorp.AutoMapper
         {
             CreateMap<Usuario, UsuarioDTO>().ReverseMap();
             CreateMap<Cita, CitaDTO>().ReverseMap();
-            CreateMap<Caso, CasoDTO>().ReverseMap();
+            CreateMap<Caso, CasoDTO>()
+              .ForMember(dest => dest.Imagenes, opt => opt.Ignore()) 
+              .ReverseMap() 
+              .ForMember(dest => dest.Imagenes, opt => opt.Ignore());
             CreateMap<Rol, RolDTO>().ReverseMap();
             CreateMap<Especialidad, EspecialidadDTO>().ReverseMap();
             CreateMap<Notificacion, NotificacionDTO>().ReverseMap();
