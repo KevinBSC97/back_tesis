@@ -105,7 +105,10 @@ namespace TesisAdvocorp.Controller
             // Mapear el DTO al caso
             var casoToUpdate = _mapper.Map(casoDTO, existingCaso);
 
-            try
+            string imagenesConcatenadas = string.Join("|", casoDTO.Imagenes);
+            casoToUpdate.Imagenes = imagenesConcatenadas;
+
+      try
             {
                 await _casoRepo.UpdateAsync(casoToUpdate);
                 return NoContent(); // Indica que la actualización fue exitosa pero no hay contenido para retornar

@@ -119,6 +119,40 @@ namespace TesisAdvocorp.Controller
     }
 
 
+    [HttpPut("{citaId}")]
+    public async Task<IActionResult> ActualizarCita(int citaId, [FromBody] CitaDTO citaDTO)
+    {
+        var cita = await _citaRepo.GetByIdAsync(citaId);
+        if (cita == null)
+        {
+          return NotFound(new { error = "Cita no encontrada" });
+        }
+
+        // Si la cita es aceptada, verifica conflictos de horarios
+        if (citaDTO.Estado == "Aceptado")
+        {
+          var citasAceptadas = await _citaRepo.GetCitasAceptadasPorAbogado(cita.AbogadoId);
+          if (citasAceptadas.Any(c => c.FechaHora == cita.FechaHora && c.CitaId != citaId))
+          {
+            return BadRequest("Ya tienes una cita aceptada en este horario. Por favor, actualiza la fecha.");
+          }
+        }
+
+        cita.Estado = citaDTO.Estado;
+        await _citaRepo.UpdateAsync(cita);
+
+        var cliente = await _usuarioRepo.GetByIdAsync(cita.ClienteId);
+        if (cliente != null)
+        {
+          string mensaje = cita.Estado == "Aceptado" ? "aceptada" : "rechazada";
+          await EnviarCorreoAsync(cliente.Email, "Estado de la Cita Actualizado",
+              $"Tu cita ha sido {mensaje}");
+        }
+
+        return Ok(new { success = true });
+    }
+
+
     [HttpGet("cita/{citaId}/detalles")]
         public async Task<ActionResult<CitaDTO>> GetCitaDetails(int citaId)
         {
